@@ -44,13 +44,25 @@ class PolicyHead(nn.Module):
         self.relu = nn.ReLU()
         self.fc = nn.Linear(8*8*2, 8*8)
 
-    def forward(self, x):
+    def forward(self, x, actions):
+        # TODO doesn't work for batches
         x = self.conv(x)
         x = self.batchnorm(x)
         x = self.relu(x)
-        x = self.reshape(-1, 8*8*2)
+        x = x.reshape(-1, 8*8*2)
         x = self.fc(x)
-        x = self.reshape(-1, 8*8)
+        x = x.reshape(-1, 8*8)
+        # exp
+        x = torch.exp(x)
+        # restrict to possible moves
+        x = x.reshape(-1, 8, 8)
+        possible = torch.zeros(x.shape)
+        for n, a in enumerate(actions):
+            for i, j in a:
+                possible[n,i,j] = 1
+        x = x * possible
+        # softmax so true probabilities
+        x = x / x.sum()
         return x
 
 class ValueHead(nn.Module):
@@ -83,19 +95,19 @@ class OthelloZero(nn.Module):
         self.convlayer = nn.Sequential(
             nn.Conv2d(in_channels = in_channels,
                       out_channels = channels,
-                      kernel_size = 3
+                      kernel_size = 3,
                       padding = 1),
-            nn.BatchNorm2d(channels),
+            # nn.BatchNorm2d(channels),
             nn.ReLU()
         )
         self.res_blocks = nn.ModuleList([ResBlock(channels) for i in range(res_layers)])
         self.policy_head = PolicyHead(channels)
         self.value_head = ValueHead(channels, hidden_size)
 
-    def forward(self, x):
+    def forward(self, x, actions):
         x = self.convlayer(x)
-        for block in res_block:
+        for block in self.res_blocks:
             x = block(x)
-        p = self.policy_head(x)
+        p = self.policy_head(x, actions)
         v = self.value_head(x)
         return p, v
