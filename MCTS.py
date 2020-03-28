@@ -34,7 +34,9 @@ def MCTS(model, iterations = 10):
             # populate actions if unexplored yet
             if not actions.get(str(move_history), []):
                 actions[str(move_history)] = legal_moves(board, 1)
-                p, v = model(tensor_from_board(board), [actions[str(move_history)]])
+                x = tensor_from_board(board, actions[str(move_history)])
+                x = x.unsqueeze(0)
+                p, v = model(x)
                 for a in actions[str(move_history)]:
                     i, j = a
                     nodes[str(move_history),a] = [0, 0, 0, p[0, i, j].item()]
@@ -90,7 +92,7 @@ def MCTS(model, iterations = 10):
 def get_objectives(nodes, boards, actions):
     # policy = normalized counts
     # value = mean value
-    X, A, V, P = [], [], [], []
+    X, V, P = [], [], []
     for key, board in boards.items():
         total_n = 0
         total_value = 0
@@ -105,50 +107,42 @@ def get_objectives(nodes, boards, actions):
                 N, _, _, _ = nodes[key, a]
                 i, j = a
                 p[i,j] = N / total_n
+            # get tensor
+            x = tensor_from_board(board, actions[key])
+            x = x.numpy()
             # add to arrays
-            X.append(board)
-            A.append(actions[key])
+            X.append(x)
             V.append(v)
             P.append(p)
-    return X, A, V, P
+    return X, V, P
 
-def augment(X, A, V, P):
+def augment(X, V, P):
     # horizontal flip, vertical flip, transpose
     # these can all be transposed with eachother
-    X_, A_, V_, P_ = [], [], [], []
-    def horizontal_flip(x, a, v, p):
-        a_ = []
-        for i, j in a:
-            a_.append((7-i, j))
-        return x[::-1], a_, v, p[::-1]
-    def vertical_flip(x, a, v, p):
-        a_ = []
-        for i, j in a:
-            a_.append((i, 7-j))
-        return x[:,::-1], a_, v, p[:,::-1]
-    def transpose(x, a, v, p):
-        a_ = []
-        for i, j in a:
-            a_.append((j, i))
-        return x.T, a_, v, p.T
-    def add(x, a, v, p):
+    X_, V_, P_ = [], [], []
+    def horizontal_flip(x, v, p):
+        return x[:,::-1], v, p[::-1]
+    def vertical_flip(x, v, p):
+        return x[:,:,::-1], v, p[:,::-1]
+    def transpose(x, v, p):
+        # TODO correct?
+        return np.transpose(x, (0,2,1)), v, p.T
+    def add(x, v, p):
         X_.append(x)
-        A_.append(a)
         V_.append(v)
         P_.append(p)
-    for obs in zip(X, A, V, P):
+    for obs in zip(X, V, P):
         add(*horizontal_flip(*obs))
         add(*vertical_flip(*obs))
         add(*transpose(*obs))
         add(*obs)
-    return X_, A_, V_, P_
+    return X_, V_, P_
 
 if __name__ == '__main__':
     from OthelloZero import OthelloZero
     model = OthelloZero(res_layers=4, channels=10)
     print('start')
     nodes, boards, actions = MCTS(model, 10)
-    X, A, V, P = get_objectives(nodes, boards, actions)
-    pdb.set_trace()
-    X, A, V, P = augment(X, A, V, P)
+    X, V, P = get_objectives(nodes, boards, actions)
+    X, V, P = augment(X, V, P)
     print('end')

@@ -44,8 +44,7 @@ class PolicyHead(nn.Module):
         self.relu = nn.ReLU()
         self.fc = nn.Linear(8*8*2, 8*8)
 
-    def forward(self, x, actions):
-        # TODO doesn't work for batches
+    def forward(self, x, possible):
         x = self.conv(x)
         x = self.batchnorm(x)
         x = self.relu(x)
@@ -56,10 +55,7 @@ class PolicyHead(nn.Module):
         x = torch.exp(x)
         # restrict to possible moves
         x = x.reshape(-1, 8, 8)
-        possible = torch.zeros(x.shape)
-        for n, a in enumerate(actions):
-            for i, j in a:
-                possible[n,i,j] = 1
+        # mask so only possible moves
         x = x * possible
         # softmax so true probabilities
         x = x / x.sum()
@@ -104,10 +100,13 @@ class OthelloZero(nn.Module):
         self.policy_head = PolicyHead(channels)
         self.value_head = ValueHead(channels, hidden_size)
 
-    def forward(self, x, actions):
+    def forward(self, x):
+        # split board and possible actions
+        x, possible = x[:,:2], x[:,2]
+
         x = self.convlayer(x)
         for block in self.res_blocks:
             x = block(x)
-        p = self.policy_head(x, actions)
+        p = self.policy_head(x, possible)
         v = self.value_head(x)
         return p, v
