@@ -2,12 +2,11 @@ from othello import *
 from helper import *
 from copy import deepcopy
 from math import sqrt
+from tqdm import tqdm
+import time
 import pdb
 
-def MCTS(model, iterations = 10):
-    # explore param
-    C = 100
-
+def MCTS(model, iterations = 10, C = 100, max_time = 1e6):
     # N, W, Q, P
     # key: str(move_history), action (tuple)
     nodes = {}
@@ -24,7 +23,12 @@ def MCTS(model, iterations = 10):
 
     boards[str(move_history)] = board
 
-    for i in range(iterations):
+    i = 0
+    start = time.time()
+    done = False
+    loop = tqdm(total = 100, position=0, leave=False)
+    last_perc = 0
+    while not done:
         move_history = []
         board, turn = start_board()
         # keep track of whose turn it was
@@ -66,6 +70,15 @@ def MCTS(model, iterations = 10):
             board, turn = make_current_black(board, turn)
             boards[str(move_history)] = board
 
+            i += 1
+            perc = max(i/iterations, (time.time() - start)/max_time)
+            perc = 100*round(perc, 2)
+            while last_perc < perc:
+                last_perc += 1
+                loop.update(1)
+            if i > iterations or time.time() - start > max_time:
+                done = True
+
         # remove last turn (end)
         turns.pop()
         # get reward with respect to last player
@@ -89,60 +102,12 @@ def MCTS(model, iterations = 10):
 
     return nodes, boards, actions
 
-def get_objectives(nodes, boards, actions):
-    # policy = normalized counts
-    # value = mean value
-    X, V, P = [], [], []
-    for key, board in boards.items():
-        total_n = 0
-        total_value = 0
-        if key in actions:
-            for a in actions[key]:
-                N, W, _, _ = nodes[key, a]
-                total_n += N
-                total_value += W
-            v = total_value / total_n
-            p = np.zeros(board.shape)
-            for a in actions[key]:
-                N, _, _, _ = nodes[key, a]
-                i, j = a
-                p[i,j] = N / total_n
-            # get tensor
-            x = tensor_from_board(board, actions[key])
-            x = x.numpy()
-            # add to arrays
-            X.append(x)
-            V.append(v)
-            P.append(p)
-    return X, V, P
-
-def augment(X, V, P):
-    # horizontal flip, vertical flip, transpose
-    # these can all be transposed with eachother
-    X_, V_, P_ = [], [], []
-    def horizontal_flip(x, v, p):
-        return x[:,::-1], v, p[::-1]
-    def vertical_flip(x, v, p):
-        return x[:,:,::-1], v, p[:,::-1]
-    def transpose(x, v, p):
-        # TODO correct?
-        return np.transpose(x, (0,2,1)), v, p.T
-    def add(x, v, p):
-        X_.append(x)
-        V_.append(v)
-        P_.append(p)
-    for obs in zip(X, V, P):
-        add(*horizontal_flip(*obs))
-        add(*vertical_flip(*obs))
-        add(*transpose(*obs))
-        add(*obs)
-    return X_, V_, P_
 
 if __name__ == '__main__':
     from OthelloZero import OthelloZero
     model = OthelloZero(res_layers=4, channels=10)
     print('start')
-    nodes, boards, actions = MCTS(model, 10)
-    X, V, P = get_objectives(nodes, boards, actions)
-    X, V, P = augment(X, V, P)
+    nodes, boards, actions = MCTS(model, 20)
     print('end')
+    X, P, V = get_objectives(nodes, boards, actions)
+    X, P, V = augment(X, P, V)

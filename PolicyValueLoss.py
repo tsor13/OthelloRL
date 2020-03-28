@@ -8,7 +8,7 @@ class PolicyValueLoss(nn.Module):
     def __init__(self):
         super(PolicyValueLoss, self).__init__()
 
-    def forward(self, v_hat, p_hat, v, p):
+    def forward(self, p_hat, v_hat, p, v):
         value_loss = ((v_hat - v)**2).sum()
         # torch.bmm dot product? hopefully
         policy_loss = -torch.bmm(p, torch.log(p_hat)).sum()
